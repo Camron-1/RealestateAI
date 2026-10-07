@@ -37,3 +37,14 @@ def normalize_listing(listing):
 
         "images": listing.get("images", [])
     }
+def normalize_place(place):
+    tags = place.get("tags", {})
+    center = place.get("center", {})
+
+    return {
+        "id": place.get("id"),
+        "name": tags.get("name"),
+        "type": tags.get("amenity") or tags.get("leisure"),
+        "latitude": place.get("lat") or center.get("lat"),
+        "longitude": place.get("lon") or center.get("lon")
+    }
