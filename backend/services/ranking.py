@@ -1,16 +1,6 @@
-
-from services.repliers import get_listings
-from services.overpass import get_closest_places
-from services.ranking import calculate_home_score
-
-
-def search_homes(
-    city,
-    state=None,
+def calculate_home_score(
+    home,
     max_price=None,
-    property_type=None,
-    min_bedrooms=None,
-    min_bathrooms=None,
     wants_hospital=False,
     wants_school=False,
     wants_park=False,
@@ -18,105 +8,119 @@ def search_homes(
     wants_playground=False
 ):
     """
-    Searches for homes and ranks them based on the user's preferences.
+    Calculates how well a home matches the user's preferences.
 
-    First, Repliers is used to find homes that match basic requirements
-    such as location, price, bedrooms, and bathrooms.
+    The home receives points for meeting the user's maximum price
+    and for having requested amenities nearby.
 
-    Then, Overpass is used to find nearby amenities for each home.
+    Amenities that are closer to the home receive more points.
 
-    Finally, each home receives a match score based on the preferences
-    the user requested.
+    The final score is returned as a percentage.
     """
 
-    # Search Repliers for homes that match the user's basic filters.
-    # These are the "hard" filters because Repliers uses them to
-    # determine which homes should be returned.
-    results = get_listings(
-        city=city,
-        state=state,
-        max_price=max_price,
-        property_type=property_type,
-        min_bedrooms=min_bedrooms,
-        min_bathrooms=min_bathrooms,
-        results_per_page=10
-    )
+    # Points the home has earned.
+    score = 0
 
-    # Get just the list of homes from the Repliers response.
-    # If "listings" does not exist, use an empty list instead.
-    listings = results.get("listings", [])
+    # Maximum number of points the home could earn
+    # based only on preferences the user requested.
+    possible_score = 0
 
-    # If Repliers did not find any matching homes,
-    # there is nothing else to process, so return an empty list.
-    if not listings:
-        return []
 
-    # Go through every home returned by Repliers so we can
-    # find nearby places and calculate its match score.
-    for home in listings:
+    # -----------------------------------
+    # Price scoring
+    # -----------------------------------
 
-        # Get the home's coordinates.
-        # These coordinates are needed to search for nearby amenities.
-        latitude = home.get("latitude")
-        longitude = home.get("longitude")
+    # Only include price in the score if the user
+    # actually provided a maximum price.
+    if max_price is not None:
 
-        # If Repliers does not provide coordinates for this home,
-        # Overpass cannot search for places around it.
-        if latitude is None or longitude is None:
-            home["nearby"] = {}
-            home["nearby_status"] = "Location unavailable"
+        possible_score += 20
 
-        else:
-            try:
-                # Search for the closest hospital, school, park,
-                # dog park, and playground around this home.
-                nearby_places = get_closest_places(
-                    latitude=latitude,
-                    longitude=longitude
-                )
+        price = home.get("price")
 
-                # Add the nearby-place information directly
-                # to this home's data.
-                home["nearby"] = nearby_places
+        # Give the home all 20 price points if it
+        # is at or below the user's maximum price.
+        if price is not None and price <= max_price:
+            score += 20
 
-            except Exception:
-                # Overpass is a public API and may occasionally fail.
-                # Instead of causing the entire home search to fail,
-                # return the home without nearby-place information.
-                home["nearby"] = {}
-                home["nearby_status"] = (
-                    "Nearby places temporarily unavailable"
-                )
 
-        # Only calculate a match score when nearby-place information
-        # was successfully retrieved.
-        if "nearby_status" not in home:
+    # -----------------------------------
+    # Nearby amenity scoring
+    # -----------------------------------
 
-            # The ranking function checks the user's requested
-            # preferences and gives the home a percentage match score.
-            home["match_score"] = calculate_home_score(
-                home=home,
-                max_price=max_price,
-                wants_hospital=wants_hospital,
-                wants_school=wants_school,
-                wants_park=wants_park,
-                wants_dog_park=wants_dog_park,
-                wants_playground=wants_playground
-            )
+    # Get the nearby places that were added to the home
+    # by our Overpass search.
+    nearby = home.get("nearby", {})
 
-        else:
-            # If nearby-place information failed, do not give the home
-            # a potentially misleading match percentage.
-            home["match_score"] = None
+    # Connect each type of nearby place with whether
+    # the user actually requested that type of place.
+    preferences = {
+        "hospital": wants_hospital,
+        "school": wants_school,
+        "park": wants_park,
+        "dog_park": wants_dog_park,
+        "playground": wants_playground
+    }
 
-    # Sort the homes from highest match score to lowest.
-    # "or 0" makes homes without a match score sort toward the bottom.
-    # reverse=True means the highest scores appear first.
-    listings.sort(
-        key=lambda home: home.get("match_score") or 0,
-        reverse=True
-    )
+    # Check each possible nearby-place preference.
+    for place_type, wanted in preferences.items():
 
-    # Return the finished list of homes with nearby-place
-    # information and match scores included.
-    return listings
+        # If the user did not request this type of place,
+        # it should not affect the home's match score.
+        if not wanted:
+            continue
+
+        # Each requested amenity is worth up to 20 points.
+        possible_score += 20
+
+        # Get the closest place of this type.
+        place = nearby.get(place_type)
+
+        # If no nearby place of this type was found,
+        # the home receives 0 points for this preference.
+        if place is None:
+            continue
+
+        distance = place.get("distance_miles")
+
+        # We cannot score the place if its distance
+        # could not be calculated.
+        if distance is None:
+            continue
+
+
+        # -----------------------------------
+        # Distance scoring
+        # -----------------------------------
+
+        # Closer amenities receive more points.
+        if distance <= 1:
+            score += 20
+
+        elif distance <= 3:
+            score += 16
+
+        elif distance <= 5:
+            score += 12
+
+        elif distance <= 7:
+            score += 8
+
+        elif distance <= 10:
+            score += 4
+
+
+    # -----------------------------------
+    # Calculate final percentage
+    # -----------------------------------
+
+    # If the user did not provide any preferences that
+    # can be scored, avoid dividing by zero.
+    if possible_score == 0:
+        return 0
+
+    # Convert the earned points into a percentage.
+    percentage = (score / possible_score) * 100
+
+    # Return the percentage rounded to the nearest whole number.
+    return round(percentage)
