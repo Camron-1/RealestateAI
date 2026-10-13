@@ -1,0 +1,59 @@
+# =========================
+# Python / Backend
+# =========================
+
+# Python virtual environments
+venv/
+.venv/
+backend/venv/
+
+# Python cache
+__pycache__/
+**/__pycache__/
+*.py[cod]
+
+# Environment variables / API keys
+.env
+.env.*
+!.env.example
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Python testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+
+# =========================
+# React / Frontend
+# =========================
+
+# Node dependencies
+node_modules/
+frontend/node_modules/
+
+# Build output
+dist/
+frontend/dist/
+frontend/build/
+
+# Local Vite files
+*.local
+
+
+# =========================
+# System / Editor
+# =========================
+
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
