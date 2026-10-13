@@ -1,0 +1,278 @@
+/* =========================
+   MAIN APP
+   ========================= */
+
+.app {
+  min-height: 100vh;
+}
+
+
+/* =========================
+   HEADER
+   ========================= */
+
+.header {
+  text-align: center;
+  padding: 60px 20px 30px;
+}
+
+.header h1 {
+  font-size: 42px;
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.header p {
+  font-size: 18px;
+  color: #666;
+  margin-top: 0;
+}
+
+
+/* =========================
+   MAIN CONTENT
+   ========================= */
+
+.main-content {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+
+/* =========================
+   SEARCH SECTION
+   ========================= */
+
+.search-section {
+  text-align: center;
+}
+
+.search-section h2 {
+  font-size: 30px;
+  margin-bottom: 10px;
+}
+
+.search-section p {
+  color: #666;
+  margin-bottom: 25px;
+}
+
+
+/* Search input and button */
+
+.search-bar {
+  display: flex;
+  gap: 10px;
+}
+
+.search-bar input {
+  flex: 1;
+  padding: 15px;
+
+  font-size: 16px;
+
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+.search-bar button {
+  padding: 15px 25px;
+
+  font-size: 16px;
+
+  border: none;
+  border-radius: 8px;
+
+  cursor: pointer;
+}
+
+.search-bar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+
+/* Error message */
+
+.error-message {
+  margin-top: 15px;
+}
+
+
+/* =========================
+   SEARCH RESULTS
+   ========================= */
+
+.results-section {
+  margin-top: 50px;
+}
+
+.home-list {
+  display: grid;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+
+/* =========================
+   HOME CARD
+   ========================= */
+
+.home-card {
+  background-color: white;
+
+  padding: 20px;
+
+  border: 1px solid #ddd;
+  border-radius: 10px;
+}
+
+.home-card h3 {
+  font-size: 26px;
+
+  margin-top: 15px;
+  margin-bottom: 10px;
+}
+
+
+/* =========================
+   IMAGE GALLERY
+   ========================= */
+
+.image-gallery {
+  position: relative;
+
+  width: 100%;
+  overflow: hidden;
+
+  border-radius: 8px;
+}
+
+.home-image {
+  display: block;
+
+  width: 100%;
+  height: 350px;
+
+  object-fit: cover;
+}
+
+
+/* Gallery arrow buttons */
+
+.gallery-button {
+  position: absolute;
+  top: 50%;
+
+  transform: translateY(-50%);
+
+  width: 45px;
+  height: 45px;
+
+  border: none;
+  border-radius: 50%;
+
+  background-color: rgba(255, 255, 255, 0.85);
+
+  font-size: 30px;
+
+  cursor: pointer;
+}
+
+.gallery-button:hover {
+  background-color: white;
+}
+
+
+/* Left arrow */
+
+.left-button {
+  left: 15px;
+}
+
+
+/* Right arrow */
+
+.right-button {
+  right: 15px;
+}
+
+
+/* Image number: 1 / 34 */
+
+.image-counter {
+  position: absolute;
+
+  right: 15px;
+  bottom: 15px;
+
+  padding: 6px 10px;
+
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+
+  border-radius: 6px;
+
+  font-size: 14px;
+}
+
+
+/* =========================
+   NEARBY PLACES
+   ========================= */
+
+.nearby-places {
+  margin-top: 20px;
+  padding-top: 15px;
+
+  border-top: 1px solid #ddd;
+}
+
+.nearby-places h4 {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.nearby-places p {
+  margin: 8px 0;
+}
+
+
+/* =========================
+   MOBILE
+   ========================= */
+
+@media (max-width: 700px) {
+
+  .header {
+    padding: 40px 15px 20px;
+  }
+
+  .header h1 {
+    font-size: 34px;
+  }
+
+  .main-content {
+    padding: 15px;
+  }
+
+  .search-bar {
+    flex-direction: column;
+  }
+
+  .search-bar button {
+    width: 100%;
+  }
+
+  .home-image {
+    height: 250px;
+  }
+
+  .gallery-button {
+    width: 40px;
+    height: 40px;
+
+    font-size: 26px;
+  }
+}

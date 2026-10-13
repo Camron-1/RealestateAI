@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from services.home_search import search_homes
 from services.ai_parser import parse_home_search
 from services.repliers import get_listings
@@ -10,7 +11,17 @@ app = FastAPI(
     title="AI Home Finder API",
     version="1.0.0"
 )
-
+# Allows the React frontend to communicate with the FastAPI backend.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def root():
