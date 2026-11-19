@@ -1,183 +1,182 @@
-import requests
-import time
 
-from services.data_structure import normalize_place
+import os
+import time
+import requests
+
+from dotenv import load_dotenv
 from services.distance import calculate_distance
 
+load_dotenv()
 
-# Overpass API endpoint used to search OpenStreetMap data
-# for places such as hospitals, schools, parks, and playgrounds.
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+GEOAPIFY_URL = "https://api.geoapify.com/v2/places"
 
+# Geoapify's documented categories.
+CATEGORIES = {
+    "hospital": "healthcare.hospital",
+    "school": "education.school",
+    "park": "leisure.park",
+    "playground": "leisure.playground",
+}
 
-# Stores previous nearby-place searches in memory.
-# This prevents us from repeatedly sending the same request
-# to Overpass for the same location and radius.
+# In-memory cache: expires after one hour.
 nearby_cache = {}
+CACHE_SECONDS = 3600
 
 
-def get_nearby_places(latitude, longitude, radius=16000):
+def get_nearby_places(latitude, longitude, radius=5000):
     """
-    Finds nearby amenities around a home's latitude and longitude.
+    Retrieve nearby amenities using Geoapify.
 
-    The function searches OpenStreetMap through the Overpass API,
-    normalizes the returned place data, calculates the distance
-    from the home to each place, and returns the finished list.
-
-    The default search radius is 16,000 meters, which is
-    approximately 10 miles.
+    Returns a list of normalized places with:
+    name, type, latitude, longitude, distance_miles.
     """
 
-    # Create a unique cache key using the home's coordinates
-    # and search radius.
-    cache_key = (latitude, longitude, radius)
+    api_key = os.getenv("GEOAPIFY_API_KEY")
 
-    # If we have already searched this exact location and radius,
-    # return the saved results instead of calling Overpass again.
-    if cache_key in nearby_cache:
-        return nearby_cache[cache_key]
+    if not api_key:
+        raise RuntimeError(
+            "GEOAPIFY_API_KEY is missing from your .env file"
+        )
 
-    # Build the Overpass query.
-    #
-    # nwr means search OpenStreetMap nodes, ways, and relations.
-    # "around" searches within the specified radius of the home.
-    #
-    # We currently search for:
-    # - hospitals
-    # - schools
-    # - parks
-    # - dog parks
-    # - playgrounds
-    #
-    # "out center" gives us coordinates for larger map objects
-    # such as ways and relations.
-    query = f"""
-    [out:json][timeout:25];
-    (
-        nwr["amenity"="hospital"](around:{radius},{latitude},{longitude});
-        nwr["amenity"="school"](around:{radius},{latitude},{longitude});
-        nwr["leisure"="park"](around:{radius},{latitude},{longitude});
-        nwr["leisure"="dog_park"](around:{radius},{latitude},{longitude});
-        nwr["leisure"="playground"](around:{radius},{latitude},{longitude});
-    );
-    out center;
-    """
+    latitude = float(latitude)
+    longitude = float(longitude)
+    radius = int(radius)
 
-    # Identify our application when sending requests to Overpass.
-    headers = {
-        "User-Agent": "RealestateAI/1.0"
+    cache_key = (
+        round(latitude, 5),
+        round(longitude, 5),
+        radius
+    )
+
+    cached = nearby_cache.get(cache_key)
+
+    if cached and time.time() - cached["timestamp"] < CACHE_SECONDS:
+        print("USING CACHED GEOAPIFY AMENITIES")
+        return cached["places"]
+
+    params = {
+        "categories": ",".join(CATEGORIES.values()),
+        "filter": f"circle:{longitude},{latitude},{radius}",
+        "bias": f"proximity:{longitude},{latitude}",
+        "limit": 500,
+        "apiKey": api_key,
     }
 
-    # Overpass is a public service and can occasionally be busy
-    # or temporarily unavailable. Try the request up to 3 times
-    # before allowing the error to be passed back to our application.
-    for attempt in range(3):
-        try:
-            response = requests.post(
-                OVERPASS_URL,
-                data={"data": query},
-                headers=headers,
-                timeout=30
+    print("SEARCHING GEOAPIFY:", latitude, longitude)
+
+    try:
+        response = requests.get(
+            GEOAPIFY_URL,
+            params=params,
+            timeout=(5, 15)
+        )
+
+        response.raise_for_status()
+        data = response.json()
+
+    except requests.exceptions.RequestException as error:
+        raise RuntimeError(
+            f"Geoapify request failed: {error}"
+        ) from error
+
+    places = []
+    seen = set()
+
+    for feature in data.get("features", []):
+        properties = feature.get("properties") or {}
+        geometry = feature.get("geometry") or {}
+
+        coordinates = geometry.get("coordinates") or []
+
+        if len(coordinates) < 2:
+            continue
+
+        place_lon = float(coordinates[0])
+        place_lat = float(coordinates[1])
+
+        categories = properties.get("categories") or []
+        name = properties.get("name") or properties.get("formatted")
+
+        if not name:
+            name = "Unnamed place"
+
+        place_types = []
+
+        for place_type, category in CATEGORIES.items():
+            if any(
+                item == category or item.startswith(category + ".")
+                for item in categories
+            ):
+                place_types.append(place_type)
+
+        # Geoapify does not document a dedicated dog-park
+        # category. Recognize clearly named dog parks.
+        if any(
+            phrase in name.lower()
+            for phrase in ("dog park", "dog run", "off-leash dog")
+        ):
+            place_types.append("dog_park")
+
+        distance = calculate_distance(
+            latitude,
+            longitude,
+            place_lat,
+            place_lon
+        )
+
+        for place_type in set(place_types):
+            unique_key = (
+                properties.get("place_id")
+                or (place_lat, place_lon),
+                place_type
             )
 
-            # Raise an error if Overpass returned an unsuccessful
-            # HTTP status code.
-            response.raise_for_status()
+            if unique_key in seen:
+                continue
 
-            # The request worked, so we do not need another attempt.
-            break
+            seen.add(unique_key)
 
-        except requests.exceptions.RequestException:
+            places.append({
+                "name": name,
+                "type": place_type,
+                "latitude": place_lat,
+                "longitude": place_lon,
+                "distance_miles": round(distance, 2),
+                "address": properties.get("formatted"),
+            })
 
-            # If the third attempt also fails, stop retrying
-            # and pass the error back to the calling function.
-            if attempt == 2:
-                raise
+    nearby_cache[cache_key] = {
+        "timestamp": time.time(),
+        "places": places
+    }
 
-            # Wait 3 seconds before trying Overpass again.
-            time.sleep(3)
+    print("GEOAPIFY AMENITIES FOUND:", len(places))
 
-    # Convert the JSON response into a Python dictionary.
-    data = response.json()
-
-    # Overpass stores the places it found inside "elements".
-    # Use an empty list if no places were found.
-    places = data.get("elements", [])
-
-    normalized_places = []
-
-    # Go through every place returned by Overpass.
-    for place in places:
-
-        # Convert the raw OpenStreetMap place into the simpler
-        # structure used throughout our application.
-        normalized_place = normalize_place(place)
-
-        place_latitude = normalized_place.get("latitude")
-        place_longitude = normalized_place.get("longitude")
-
-        # We need coordinates for both the home and place
-        # in order to calculate the distance between them.
-        if place_latitude is not None and place_longitude is not None:
-
-            # Calculate the straight-line distance from the home
-            # to this nearby place in miles.
-            distance = calculate_distance(
-                latitude,
-                longitude,
-                place_latitude,
-                place_longitude
-            )
-
-            # Add the calculated distance to the place's information.
-            normalized_place["distance_miles"] = distance
-
-        normalized_places.append(normalized_place)
-
-    # Save the completed search in the cache so another request
-    # for this same location does not have to call Overpass again.
-    nearby_cache[cache_key] = normalized_places
-
-    return normalized_places
+    return places
 
 
-def get_closest_places(latitude, longitude, radius=16000):
+def get_closest_places(latitude, longitude, radius=5000):
     """
-    Finds the closest place of each amenity type around a home.
-
-    Instead of returning every hospital, school, park, etc.,
-    this function keeps only the closest one of each type.
+    Return the closest place for each amenity type.
+    Compatible with the existing home_search.py.
     """
 
-    # Get all nearby places around the home.
     places = get_nearby_places(
         latitude=latitude,
         longitude=longitude,
         radius=radius
     )
 
-    # This dictionary will eventually contain one closest place
-    # for each type, such as hospital, school, park, or playground.
     closest_places = {}
 
     for place in places:
+        place_type = place["type"]
 
-        place_type = place.get("type")
-        distance = place.get("distance_miles")
-
-        # Skip places that do not have a type or calculated distance.
-        if place_type is None or distance is None:
-            continue
-
-        # If this is the first place we have found of this type,
-        # temporarily consider it the closest one.
-        if place_type not in closest_places:
+        if (
+            place_type not in closest_places
+            or place["distance_miles"]
+            < closest_places[place_type]["distance_miles"]
+        ):
             closest_places[place_type] = place
 
-        # If we already found this type, replace it only when
-        # the new place is closer to the home.
-        elif distance < closest_places[place_type]["distance_miles"]:
-            closest_places[place_type] = place
-
-    # Return only the closest location for each amenity type.
     return closest_places
